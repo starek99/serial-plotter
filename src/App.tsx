@@ -1,26 +1,34 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import { SerialProvider } from './contexts/SerialContext';
+import {SerialPlot} from './components/SerialPlot';
+import { Toaster } from 'react-hot-toast';
+import {Dashboard} from './components/dashboard';
+import { ThemeProvider } from "./themeProvider"
+// import './app.css';
 
-function App() {
+const App: React.FC = () => {
+  
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <html lang="en" suppressHydrationWarning>
+    <head>
+      <title>EZ Plotter</title>
+      <meta name="description" content="Real-time serial data visualization tool" />
+    </head>
+    <body>
+      <ThemeProvider>
+        <SerialProvider>
+        <Dashboard /> 
+          <Toaster position="bottom-right"/>
+        </SerialProvider>
+      </ThemeProvider>
+    </body>
+  </html>
+
+    // <SerialProvider>
+    //   <Dashboard />
+    //   <Toaster position="bottom-right" />
+    // </SerialProvider>
   );
-}
+};
 
 export default App;

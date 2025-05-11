@@ -1,6 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+} from "react";
+import { useSerial } from "../hooks/useSerial";
 
 export interface SerialDataPoint {
   timestamp: number;
@@ -9,54 +17,67 @@ export interface SerialDataPoint {
 }
 
 interface SerialContextType {
-  port: SerialPort | null;
-  setPort: (port: SerialPort | null) => void;
   baudRate: number;
   setBaudRate: (rate: number) => void;
   isConnected: boolean;
-  setIsConnected: (connected: boolean) => void;
   isPaused: boolean;
   setIsPaused: (paused: boolean) => void;
   data: SerialDataPoint[];
   addDataPoint: (point: SerialDataPoint) => void;
   clearData: () => void;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
 }
 
 const SerialContext = createContext<SerialContextType | undefined>(undefined);
 
-export const SerialProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [port, setPort] = useState<SerialPort | null>(null);
+export const SerialProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const { isConnected, connectSerial, disconnectSerial, startReading } =
+    useSerial();
   const [baudRate, setBaudRate] = useState<number>(9600);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [data, setData] = useState<SerialDataPoint[]>([]);
 
   const addDataPoint = useCallback((point: SerialDataPoint) => {
-    setData(prev => [...prev, point]);
+    setData((prev) => [...prev, point]);
   }, []);
 
   const clearData = useCallback(() => {
     setData([]);
   }, []);
 
-  const value = useMemo(() => ({
-    port,
-    setPort,
-    baudRate,
-    setBaudRate,
-    isConnected,
-    setIsConnected,
-    isPaused,
-    setIsPaused,
-    data,
-    addDataPoint,
-    clearData,
-  }), [port, baudRate, isConnected, isPaused, data, addDataPoint, clearData]);
+  const value = useMemo(
+    () => ({
+      baudRate,
+      setBaudRate,
+      isConnected,
+      isPaused,
+      setIsPaused,
+      data,
+      addDataPoint,
+      clearData,
+      connect: connectSerial,
+      disconnect: disconnectSerial,
+    }),
+    [baudRate, isConnected, isPaused, data, addDataPoint, clearData]
+  );
+
+  useEffect(() => {
+    let unsubscriber: () => void | undefined;
+    if (isConnected && !isPaused) {
+      console.log("STARTING TO READ!");
+      unsubscriber = startReading((dp) => addDataPoint(dp));
+    }
+
+    return () => {
+      unsubscriber?.();
+    };
+  }, [isConnected, isPaused]);
 
   return (
-    <SerialContext.Provider value={value}>
-      {children}
-    </SerialContext.Provider>
+    <SerialContext.Provider value={value}>{children}</SerialContext.Provider>
   );
 };
 

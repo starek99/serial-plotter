@@ -24,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.507.0",
     "next-themes": "^0.4.6",
     "react": "^19.1.0",
@@ -63,6 +64,7 @@
     ]
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.16",
     "@types/web": "^0.0.232",
     "tailwind": "^3.1.0",
     "tailwindcss": "^3.4.17",

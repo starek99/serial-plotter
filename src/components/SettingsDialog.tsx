@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useState } from "react"
 import { useSerialContext } from "../contexts/SerialContext"
@@ -15,6 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Label } from "../components/ui/label"
 import { Input } from "../components/ui/input"
 import { Trash2 } from "lucide-react"
+import { Checkbox } from "../components/ui/checkbox"
+import { useSerial } from "../hooks/useSerial"
+import { toast } from "sonner"
 
 export function SettingsDialog({
   open,
@@ -23,18 +26,44 @@ export function SettingsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { baudRate, setBaudRate, clearData } = useSerialContext()
+  const { baudRate, setBaudRate, clearData, isConnected, connect } = useSerialContext()
   const [localBaudRate, setLocalBaudRate] = useState(baudRate.toString())
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [customBaudRate, setCustomBaudRate] = useState("")
 
   const baudRates = ["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"]
 
-  const handleSave = () => {
-    const rate = Number.parseInt(localBaudRate, 10)
+  const handleBaudRateChange = (value: string) => {
+    setLocalBaudRate(value)
+    setBaudRate(Number.parseInt(value, 10))
+  }
+
+  const handleCustomBaudRateSave = () => {
+    const rate = Number.parseInt(customBaudRate, 10)
     if (!isNaN(rate) && rate > 0) {
+      setLocalBaudRate(customBaudRate)
       setBaudRate(rate)
     }
-    onOpenChange(false)
   }
+
+  const handleConnect = async () => {
+    try {
+      await connect();
+      onOpenChange(false);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('No port selected')) {
+        toast.warning("Connection Failed", {
+          description: "No port was selected. Please select a port to connect.",
+          duration: 2000
+        });
+      } else {
+        toast.error("Connection Failed", {
+          description: err instanceof Error ? err.message : "Unknown error occurred",
+          duration: 2000
+        });
+      }
+    }
+  };
 
   const handleClearData = () => {
     clearData()
@@ -52,7 +81,11 @@ export function SettingsDialog({
             <Label htmlFor="baud-rate" className="text-right">
               Baud Rate
             </Label>
-            <Select value={localBaudRate} onValueChange={setLocalBaudRate}>
+            <Select 
+              value={localBaudRate} 
+              onValueChange={handleBaudRateChange}
+              disabled={isConnected}
+            >
               <SelectTrigger id="baud-rate" className="col-span-3">
                 <SelectValue placeholder="Select baud rate" />
               </SelectTrigger>
@@ -66,18 +99,41 @@ export function SettingsDialog({
             </Select>
           </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="custom-baud" className="text-right">
-              Custom
-            </Label>
-            <Input
-              id="custom-baud"
-              type="number"
-              value={localBaudRate}
-              onChange={(e) => setLocalBaudRate(e.target.value)}
-              className="col-span-3"
+          <div className="flex items-center space-x-2">
+            <Checkbox 
+              id="advanced" 
+              checked={showAdvanced} 
+              onCheckedChange={(checked) => setShowAdvanced(checked as boolean)}
+              disabled={isConnected}
             />
+            <Label htmlFor="advanced">Show advanced baud rate options</Label>
           </div>
+
+          {showAdvanced && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="advanced-baud" className="text-right">
+                Advanced Rate
+              </Label>
+              <div className="col-span-3 flex gap-2">
+                <Input
+                  id="advanced-baud"
+                  type="number"
+                  value={customBaudRate}
+                  onChange={(e) => setCustomBaudRate(e.target.value)}
+                  disabled={isConnected}
+                  className="flex-1"
+                  placeholder="Enter custom baud rate"
+                />
+                <Button 
+                  onClick={handleCustomBaudRateSave}
+                  disabled={isConnected}
+                  variant="secondary"
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="border-t pt-4 mt-2">
             <Button variant="destructive" onClick={handleClearData} className="w-full">
@@ -85,11 +141,23 @@ export function SettingsDialog({
             </Button>
           </div>
         </div>
+        {isConnected && (
+          <p className="text-sm text-muted-foreground text-center mb-4">
+            You need to disconnect before changing the baud rate
+          </p>
+        )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave}>Save Changes</Button>
+          <div className="border-t pt-4 mt-2 flex gap-4 items-center">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConnect}
+              disabled={isConnected}
+            >
+              Connect
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

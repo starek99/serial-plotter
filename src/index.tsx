@@ -6,6 +6,8 @@ import { SerialProvider } from './contexts/SerialContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-  <App />
-</React.StrictMode>
+    <SerialProvider>
+      <App />
+    </SerialProvider>
+  </React.StrictMode>
 );

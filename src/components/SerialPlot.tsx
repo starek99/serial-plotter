@@ -2,6 +2,14 @@
 
 import { useState, useMemo, useRef,useEffect } from "react"
 import { useSerialContext } from "../contexts/SerialContext"
+import { useTheme } from "next-themes"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@radix-ui/react-select"
 import {
   LineChart,
   Line,
@@ -12,6 +20,7 @@ import {
   Legend,
   ResponsiveContainer,
   type TooltipProps,
+  Brush,  // Add this import
 } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button"
@@ -20,13 +29,13 @@ import { Switch } from "../components/ui/switch"
 import { Label } from "../components/ui/label"
 import { Checkbox } from "../components/ui/checkbox"
 import { ScrollArea } from "../components/ui/scroll-area"
-import { ZoomIn, ZoomOut, RefreshCw, Clock, LineChartIcon } from "lucide-react"
-import { useTheme } from "next-themes"
+import { ZoomIn, ZoomOut, RefreshCw, Clock, LineChartIcon, Maximize2, Minimize2 } from "lucide-react"
 
 export function SerialPlot() {
   const { data, isConnected, isPaused, clearData } = useSerialContext()
   const { theme } = useTheme()
   const chartRef = useRef<any>(null)
+
 
   // State for chart controls
   const [yAxisDomain, setYAxisDomain] = useState<[number | string, number | string]>(["auto", "auto"])
@@ -34,46 +43,78 @@ export function SerialPlot() {
   const [isZoomed, setIsZoomed] = useState(false)
   const [zoomRange, setZoomRange] = useState<[number, number] | null>(null)
   const [showGrid, setShowGrid] = useState(true)
-  const [smoothing, setSmoothing] = useState(50) // 0-100 scale for curve smoothing
+  const [smoothing, setSmoothing] = useState(50)
   const [lineThickness, setLineThickness] = useState(2)
   const [autoScroll, setAutoScroll] = useState(true)
+  
+  // Add these new state variables
+  const [showDataPoints, setShowDataPoints] = useState(true)
+  const [yAxisRange, setYAxisRange] = useState<[number, number]>([0, 5000]);
+  const [yAxisType, setYAxisType] = useState<"auto" | "fixed">("auto")
+  const [gridOpacity, setGridOpacity] = useState(0.3)
+  const [dataWindowSize, setDataWindowSize] = useState(100)
+  const effectiveWindowSize = isPaused ? Math.min(dataWindowSize, 1000) : 100;
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+
+const toggleFullscreen = () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+    setIsFullscreen(true);
+  } else {
+    document.exitFullscreen();
+    setIsFullscreen(false);
+  }
+};
 
   // Get all unique channels
-  const channels = useMemo(() => {
-    const set = new Set<string>()
+  // const channels = useMemo(() => {
+  // [  const set = new Set<string>()
+  //   data.forEach((d) => {
+  //     if (d.channel && typeof d.channel === "string" && !d.channel.includes("�")) {
+  //       // Trim and normalize the channel name
+  //       set.add(d.channel.trim())
+  //     }
+  //   })
+  //   // Sort for stability
+  //   return Array.from(set).sort()]
+  // }, [data])
+
+  const [channels, setChannels] = useState<string[]>([
+    
+  ])
+
+  useEffect(() => {
+      const set = new Set<string>()
     data.forEach((d) => {
       if (d.channel && typeof d.channel === "string" && !d.channel.includes("�")) {
-        set.add(d.channel)
+        // Trim and normalize the channel name
+        set.add(d.channel.trim())
       }
     })
-    return Array.from(set)
+
+    const finalChannels = Array.from(set).sort();
+    // Sort for stability
+    if(!channels.length || channels.some((ch, i) => finalChannels[i] !== ch)) {
+      setChannels(finalChannels)
+    }
   }, [data])
 
-  
   // State for which channels are visible
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set())
 
-  // Update selected channels when new ones are detected
   useEffect(() => {
-    const validChannels = channels.filter((ch) => typeof ch === "string" && !ch.includes("�") && ch.trim() !== "")
-    setSelectedChannels((prev) => {
-      const newSet = new Set(prev)
-      // Add any new channels
-      validChannels.forEach((ch) => {
-        if (!prev.has(ch)) {
-          newSet.add(ch)
-        }
-      })
-      return newSet
-    })
+    const validChannels = channels.filter((ch) => typeof ch === "string" && !ch.includes("�"))
+    setSelectedChannels(new Set(validChannels))
+  
   }, [channels])
 
-  // Reshape data into a single object per timestamp, with each channel as a key
-  const reshapedData = useMemo(() => {
-    const grouped: Record<number, Record<string, any>> = {}
 
-    data.forEach((d) => {
-      if (!d.channel || !selectedChannels.has(d.channel)) return // Skip invalid or unselected channels
+  const reshapedData = useMemo(() => {
+    const dataToProcess = data.slice(-Math.max(effectiveWindowSize, 2000));
+    const grouped: Record<number, Record<string, any>> = {}
+    dataToProcess.forEach((d) => {
+      if (!d.channel || !selectedChannels.has(d.channel)) return 
 
       const ts = d.timestamp
       const ch = d.channel
@@ -82,7 +123,7 @@ export function SerialPlot() {
     })
 
     return Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp)
-  }, [data, selectedChannels])
+  }, [data, selectedChannels,effectiveWindowSize])
   const statistics = useMemo(() => {
     const stats: Record<string, any> = {}
 
@@ -119,63 +160,54 @@ export function SerialPlot() {
     }
   }, [reshapedData, autoScroll, isPaused])
 
+
+  const [channelColors, setChannelColors] = useState<Record<string, string>>({});
+
+  // Define a set of predefined colors
+  const predefinedColors = [
+    "#3b82f6", // blue
+    "#ef4444", // red
+    "#10b981", // green
+    "#f59e0b", // amber
+    "#8b5cf6", // violet
+    "#ec4899", // pink
+    "#14b8a6", // teal
+    "#f97316", // orange
+    "#6366f1", // indigo
+    "#84cc16", // lime
+    "#9333ea", // purple
+    "#06b6d4", // cyan
+    "#eab308", // yellow
+    "#64748b", // slate
+    "#d946ef"  // fuchsia
+  ];
+
   // Generate static colors for lines
   const getLineColor = (channel: string) => {
-    const colors = {
-      SENSOR_1: theme === "dark" ? "#60a5fa" : "#3b82f6", // blue
-      SENSOR_2: theme === "dark" ? "#f87171" : "#ef4444", // red
-      SENSOR_3: theme === "dark" ? "#34d399" : "#10b981", // green
-      SENSOR_4: theme === "dark" ? "#fbbf24" : "#f59e0b", // amber
-      SENSOR_5: theme === "dark" ? "#a78bfa" : "#8b5cf6", // violet
-      default: theme === "dark" ? "#94a3b8" : "#64748b", // slate
+    if (channelColors[channel]) {
+      return channelColors[channel];
     }
-
-    return colors[channel as keyof typeof colors] || colors.default
+    // Use modulo to cycle through colors if we have more channels than colors
+    const index = channels.indexOf(channel) % predefinedColors.length;
+    return predefinedColors[index];
   }
 
+  // Replace the color input with a color selector
   const toggleChannel = (channel: string) => {
     setSelectedChannels((prev) => {
       const newSet = new Set(prev)
-      newSet.has(channel) ? newSet.delete(channel) : newSet.add(channel)
+      if (newSet.has(channel)) {
+        newSet.delete(channel)
+      } else {
+        newSet.add(channel)
+      }
       return newSet
     })
   }
 
-  const handleZoomIn = () => {
-    if (chartRef.current) {
-      const chart = chartRef.current
-      const xAxis = chart.xAxis
 
-      if (xAxis) {
-        const xDomain = xAxis.domain
-        const xCenter = (xDomain[0] + xDomain[1]) / 2
-        const xRange = xDomain[1] - xDomain[0]
-
-        setZoomRange([xCenter - xRange * 0.25, xCenter + xRange * 0.25])
-        setIsZoomed(true)
-        setAutoScroll(false)
-      }
-    }
-  }
-
-  const handleZoomOut = () => {
-    if (chartRef.current) {
-      const chart = chartRef.current
-      const xAxis = chart.xAxis
-
-      if (xAxis) {
-        const xDomain = xAxis.domain
-        const xCenter = (xDomain[0] + xDomain[1]) / 2
-        const xRange = xDomain[1] - xDomain[0]
-
-        setZoomRange([xCenter - xRange * 2, xCenter + xRange * 2])
-      }
-    }
-  }
-
-  const handleResetZoom = () => {
+  const handleResetData = () => {
     clearData()
-    setYAxisDomain(["auto", "auto"])
     setZoomRange(null)
     setIsZoomed(false)
     setAutoScroll(true)
@@ -239,12 +271,12 @@ export function SerialPlot() {
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-2 flex flex-row justify-between items-start">
+    <Card className="w-full bg-background text-foreground">
+      <CardHeader className="pb-2 flex flex-row justify-between items-start bg-background text-foreground">
         <div>
           <CardTitle>Real-time Data Plot</CardTitle>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 bg-background text-foreground">
           <Button variant="outline" size="sm" onClick={toggleXAxisScale} className="flex items-center gap-1">
             {xAxisScale === "time" ? (
               <>
@@ -257,140 +289,258 @@ export function SerialPlot() {
             )}
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleZoomIn} className="flex items-center gap-1">
-            <ZoomIn className="h-4 w-4" /> Zoom In
+          <Button variant="outline" size="sm" onClick={handleResetData} className="flex items-center gap-1">
+            <RefreshCw className="h-4 w-4" /> Reset Data
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleZoomOut} className="flex items-center gap-1">
-            <ZoomOut className="h-4 w-4" /> Zoom Out
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleResetZoom} className="flex items-center gap-1">
-            <RefreshCw className="h-4 w-4" /> Reset
+          <Button variant="outline" size="sm" onClick={toggleFullscreen} className="flex items-center gap-1">
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="h-4 w-4" /> Exit
+              </>
+            ) : (
+              <>
+                <Maximize2 className="h-4 w-4" /> Full
+              </>
+            )}
           </Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
         {/* Sensor Controls and Latest Readings */}
-        <div className="flex flex-col md:flex-row gap-4">
-          {/* Sensor Toggles */}
-          <Card className="w-full md:w-1/2">
-            <CardHeader className="py-2">
-              <CardTitle className="text-sm">Sensor Visibility</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <ScrollArea className="h-[100px]">
-                <div className="space-y-2">
-                  {channels.map((channel) => (
-                    <div key={channel} className="flex items-center space-x-2 rounded-md p-1 hover:bg-accent">
-                      <Checkbox
-                        id={`channel-${channel}`}
-                        checked={selectedChannels.has(channel)}
-                        onCheckedChange={() => toggleChannel(channel)}
-                      />
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: getLineColor(channel) }} />
-                      <Label htmlFor={`channel-${channel}`} className="flex-1 cursor-pointer text-sm">
-                        {channel}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+        {/* Combined Sensor Controls and Latest Readings */}
+        <div className="border rounded-lg bg-card/50 backdrop-blur p-2">
+          <ScrollArea className="h-[min(300px,max(120px,2.5rem*${channels.length}))]">
+            <div className="space-y-2">
+              {channels.map((channel) => (
+                <div
+                  key={channel}
+                  className="flex items-center justify-between rounded-md p-2 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <Checkbox
+                      id={`channel-${channel}`}
+                      checked={selectedChannels.has(channel)}
+                      onCheckedChange={() => toggleChannel(channel)}
+                      className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
 
-          {/* Latest Readings */}
-          <Card className="w-full md:w-1/2">
-            <CardHeader className="py-2">
-              <CardTitle className="text-sm">Latest Readings</CardTitle>
-            </CardHeader>
-            <CardContent className="p-2">
-              <ScrollArea className="h-[100px]">
-                {latestReadings.length === 0 ? (
-                  <div className="text-muted-foreground text-sm p-2">No data available</div>
-                ) : (
-                  <div className="space-y-2">
-                    {latestReadings.map((reading, index) => (
-                      <div key={index} className="flex items-center justify-between rounded-md p-1 hover:bg-accent">
+<Select
+                      value={channelColors[channel] || getLineColor(channel)}
+                      onValueChange={(value) => setChannelColors(prev => ({
+                        ...prev,
+                        [channel]: value
+                      }))}>
+                      <SelectTrigger className="w-[100px] h-7 px-2">
                         <div className="flex items-center gap-2">
                           <div
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: getLineColor(reading.channel) }}
+                            className="w-4 h-4 rounded-full border border-border"
+                            style={{ backgroundColor: channelColors[channel] || getLineColor(channel) }}
                           />
-                          <span className="font-medium text-sm">{reading.channel}</span>
+                          <span className="text-xs truncate">Color</span>
                         </div>
-                        <div className="text-right">
-                          <span className="font-mono text-sm">{reading.value.toFixed(2)}</span>
-                          <div className="text-xs text-muted-foreground">{reading.timestamp}</div>
+                      </SelectTrigger>
+                      <SelectContent className="min-w-[160px] bg-popover border rounded-md shadow-md">
+                        <div className="grid grid-cols-5 gap-1 p-2 bg-popover rounded-md">
+                          {predefinedColors.map((color, index) => (
+                            <SelectItem 
+                              key={color} 
+                              value={color}
+                              className="p-1 m-0 hover:bg-accent rounded-md transition-colors data-[highlighted]:bg-accent"
+                            >
+                              <div
+                                className="w-6 h-6 rounded-full border border-border hover:scale-110 transition-transform cursor-pointer"
+                                style={{ backgroundColor: color }}
+                                title={`Color ${index + 1}`}
+                              />
+                            </SelectItem>
+                          ))}
                         </div>
-                      </div>
-                    ))}
+                      </SelectContent>
+                    </Select>
+                    <Label
+                      htmlFor={`channel-${channel}`}
+                      className="font-medium text-sm cursor-pointer"
+                    >
+                      {channel}
+                    </Label>
                   </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                  {latestReadings.find(r => r.channel === channel) && (
+                    <div className="flex items-center gap-4 text-right">
+                      <span className="font-mono text-sm font-semibold">
+                        {latestReadings.find(r => r.channel === channel)?.value.toFixed(2)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {latestReadings.find(r => r.channel === channel)?.timestamp}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
         </div>
 
         {/* Chart Controls */}
-        <div className="flex flex-wrap gap-2 justify-between items-center">
-          <div className="space-y-2 w-full md:w-auto md:flex md:items-center md:gap-4">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="smoothing" className="w-24 text-sm">
-                Smoothing
-              </Label>
-              <Slider
-                id="smoothing"
-                min={0}
-                max={100}
-                step={1}
-                value={[smoothing]}
-                onValueChange={(value) => setSmoothing(value[0])}
-                className="w-32"
-              />
-              <span className="text-xs text-muted-foreground w-8 text-right">{smoothing}%</span>
+        <div className="flex flex-wrap gap-4 p-4 border rounded-lg bg-card">
+          <div className="flex gap-6 flex-wrap w-full">
+            {/* Line Style Controls */}
+            <div className="space-y-4 border-r pr-6 flex-1">
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="smoothing" className="text-sm font-medium">
+                    Line Smoothing
+                  </Label>
+                  <span className="text-sm font-mono text-muted-foreground">
+                    {smoothing}%
+                  </span>
+                </div>
+                <Slider
+                  id="smoothing"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={[smoothing]}
+                  onValueChange={(value) => setSmoothing(value[0])}
+                  className="w-full"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="thickness" className="text-sm font-medium">
+                    Line Width
+                  </Label>
+                   <div className="flex items-center gap-2">
+                   <span className="text-sm font-mono text-muted-foreground">
+                    {lineThickness}px
+                  </span>
+                  <Switch id="show-points" checked={showDataPoints} onCheckedChange={setShowDataPoints} />
+              </div>
+                </div>
+                <Slider
+                  id="thickness"
+                  min={1}
+                  max={5}
+                  step={0.5}
+                  value={[lineThickness]}
+                  onValueChange={(value) => setLineThickness(value[0])}
+                  className="w-full"
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Label htmlFor="thickness" className="w-24 text-sm">
-                Line Width
-              </Label>
-              <Slider
-                id="thickness"
-                min={1}
-                max={5}
-                step={0.5}
-                value={[lineThickness]}
-                onValueChange={(value) => setLineThickness(value[0])}
-                className="w-32"
-              />
-              <span className="text-xs text-muted-foreground w-8 text-right">{lineThickness}px</span>
-            </div>
-          </div>
+            {/* Grid and Data Window Controls */}
+            <div className="space-y-4 border-r pr-6 flex-1">
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Grid Opacity</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono text-muted-foreground">
+                      {(gridOpacity * 100).toFixed(0)}%
+                    </span>
+                    <Switch id="show-grid" checked={showGrid} onCheckedChange={setShowGrid} />
+                  </div>
+                </div>
+                <Slider
+                  min={0}
+                  max={100}
+                  value={[gridOpacity * 100]}
+                  onValueChange={(value) => setGridOpacity(value[0] / 100)}
+                  className="w-full"
+                  disabled={!showGrid}
+                />
+              </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Switch id="auto-scroll" checked={autoScroll} onCheckedChange={setAutoScroll} />
-              <Label htmlFor="auto-scroll" className="text-sm">
-                Auto-scroll
-              </Label>
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Data Window</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono text-muted-foreground">
+                      {dataWindowSize} pts
+                    </span>
+                  </div>
+                </div>
+                <Slider
+                  min={50}
+                  max={1000}
+                  step={50}
+                  value={[dataWindowSize]}
+                  onValueChange={(value) => setDataWindowSize(value[0])}
+                  className="w-full"
+                  disabled={!isPaused}
+                />
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch id="show-grid" checked={showGrid} onCheckedChange={setShowGrid} />
-              <Label htmlFor="show-grid" className="text-sm">
-                Grid
-              </Label>
+            {/* Y-Axis Controls */}
+            <div className="space-y-4 flex-1">
+              <div className="flex flex-col gap-2 min-w-[200px]">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Y-Axis Range</Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Auto</span>
+                    <Switch
+                      checked={yAxisType === "fixed"}
+                      onCheckedChange={(checked) => setYAxisType(checked ? "fixed" : "auto")}
+                    />
+                    <span className="text-sm text-muted-foreground">Fixed</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {/* Maximum slider */}
+                  <Slider
+                    min={yAxisRange[0] + 100}
+                    max={5000}
+                    step={100}
+                    value={[yAxisRange[1]]}
+                    onValueChange={(value) => setYAxisRange([yAxisRange[0], value[0]])}
+                    className="w-full"
+                    disabled={yAxisType === "auto"}
+                  />
+                  <div className="flex justify-end">
+                    <span className="text-xs font-mono text-muted-foreground">
+                      Max: {yAxisRange[1].toFixed(0)}
+                    </span>
+                  </div>
+                  
+                  {/* Minimum slider */}
+                  <Slider
+                    min={0}
+                    max={yAxisRange[1] - 100}
+                    step={100}
+                    value={[yAxisRange[0]]}
+                    onValueChange={(value) => setYAxisRange([value[0], yAxisRange[1]])}
+                    className="w-full"
+                    disabled={yAxisType === "auto"}
+                  />
+                  <div className="flex justify-end">
+                    <span className="text-xs font-mono text-muted-foreground">
+                      Min: {yAxisRange[0].toFixed(0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Main Chart */}
-        <div className="h-[60vh] min-h-[400px] border rounded-lg p-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart ref={chartRef} data={reshapedData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
-              {showGrid && <CartesianGrid strokeDasharray="3 3" opacity={0.5} />}
+        <div className="space-y-2">
+          <div className="h-[55vh] min-h-[400px] border rounded-lg p-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart 
+                ref={chartRef} 
+                data={reshapedData.slice(-effectiveWindowSize)}  
+                margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
+                onMouseMove={(e) => {
+                  if (isPaused && e?.activeLabel) {
+                    // Update tooltip or cursor position
+                  }
+                }}
+              >
+              {showGrid && <CartesianGrid strokeDasharray="3 3" opacity={gridOpacity} />}
 
               <XAxis
                 dataKey="timestamp"
@@ -401,9 +551,26 @@ export function SerialPlot() {
                 allowDataOverflow
               />
 
-              <YAxis domain={yAxisDomain} allowDataOverflow />
+              <YAxis 
+                domain={yAxisType === "fixed" ? yAxisRange : ["auto", "auto"]} 
+                allowDataOverflow 
+              />
 
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip 
+                content={<CustomTooltip />}
+                isAnimationActive={false}
+                cursor={{ stroke: isPaused ? "#666" : "transparent", strokeWidth: 1, strokeDasharray: "3 3" }}
+              />
+              
+
+<Brush
+                  dataKey="timestamp"
+                  height={30}
+                  stroke={theme === "dark" ? "#94a3b8" : "#64748b"}
+                  fill={theme === "dark" ? "#1e293b" : "#f1f5f9"}
+                  tickFormatter={(ts: number) => new Date(ts).toLocaleTimeString()}
+                  display={isPaused ? "block" : "none"}
+                />
 
               <Legend
                 wrapperStyle={{ paddingTop: "10px" }}
@@ -419,15 +586,40 @@ export function SerialPlot() {
                     dataKey={channel}
                     name={channel}
                     stroke={getLineColor(channel)}
-                    dot={false}
+                    dot={showDataPoints}
                     strokeWidth={lineThickness}
                     isAnimationActive={false}
-                    activeDot={{ r: 6 }}
+                    activeDot={{ r: showDataPoints ? 6 : 4 }}
                     connectNulls
                   />
                 ))}
             </LineChart>
           </ResponsiveContainer>
+          
+          
+        </div>
+        {/* <div className="h-[60px] border-b">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart 
+                data={reshapedData} 
+                margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+              >
+                {channels
+                  .filter((ch) => selectedChannels.has(ch) && typeof ch === "string" && !ch.includes("�"))
+                  .map((channel) => (
+                    <Line
+                      key={channel}
+                      type="monotone"
+                      dataKey={channel}
+                      stroke={getLineColor(channel)}
+                      dot={false}
+                      strokeWidth={1}
+                      isAnimationActive={false}
+                    />
+                  ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div> */}
         </div>
       </CardContent>
       <Card>  

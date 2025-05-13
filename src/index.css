@@ -31,6 +31,9 @@
     --chart-3: 142.1 76.2% 36.3%;
     --chart-4: 31.8 81.2% 50.6%;
     --chart-5: 262.1 83.3% 57.8%;
+    --chart-6: 180 70% 45%;
+    --chart-7: 300 65% 55%;
+    --chart-8: 45 80% 55%;
   }
 
   .dark {
@@ -60,15 +63,38 @@
     --chart-3: 142.1 70.2% 45.3%;
     --chart-4: 31.8 81.2% 60.6%;
     --chart-5: 262.1 83.3% 67.8%;
+    --chart-6: 180 70% 55%;
+    --chart-7: 300 65% 65%;
+    --chart-8: 45 80% 65%;
   }
 }
+* {
+  transition: background-color 0.3s ease, color 0.3s ease,
+    border-color 0.3s ease, box-shadow 0.3s ease;
+}
 
+/* Smooth chart transitions */
+.chart-transition {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.data-point-transition {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
 @layer base {
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.2);
   }
 }
 
@@ -79,9 +105,80 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+/* Add these CSS classes */
+.chart-transition {
+  transition: all 0.3s ease-in-out;
+}
+
+.data-point-transition {
+  transition: transform 0.3s ease-in-out;
+}
+/* Enhanced Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--secondary));
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.5);
+  border-radius: var(--radius);
+  border: 2px solid hsl(var(--secondary));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.7);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Log Area Enhancements */
+.log-message {
+  @apply transition-colors duration-200;
+}
+
+.log-message:hover {
+  @apply bg-accent/50;
+}
+
+/* Smooth scroll behavior */
+.scroll-area-viewport {
+  scroll-behavior: smooth;
+}
+
+/* Custom selection color for log messages */
+.log-message ::selection {
+  background-color: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
+}
+
+/* Fade effect for log messages */
+.log-message {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
